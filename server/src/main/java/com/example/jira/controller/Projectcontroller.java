@@ -44,19 +44,33 @@ public class Projectcontroller {
 
     @GetMapping("/{id}")
     public ProjectResponse getProjectById(@PathVariable String id) {
+        if (!ObjectId.isValid(id)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Invalid project ID");
+        }
+
         Project project = projectrepository.findById(new ObjectId(id))
-                .orElseThrow(() -> new RuntimeException("Project not found"));
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "Project not found"));
 
         // Fetch owner
-        User owner = userRepository.findById(new ObjectId(project.getOwnerId()))
-                .orElse(null);
+        User owner = null;
+        if (project.getOwnerId() != null && ObjectId.isValid(project.getOwnerId())) {
+            owner = userRepository.findById(new ObjectId(project.getOwnerId()))
+                    .orElse(null);
+        }
 
         // Fetch members
-        List<ObjectId> memberObjectIds = project.getMemberIds().stream()
-                .map(ObjectId::new)
-                .toList();
-
-        List<User> members = userRepository.findByIdIn(memberObjectIds);
+        List<User> members = List.of();
+        if (project.getMemberIds() != null) {
+            List<ObjectId> memberObjectIds = project.getMemberIds().stream()
+                    .filter(ObjectId::isValid)
+                    .map(ObjectId::new)
+                    .toList();
+            if (!memberObjectIds.isEmpty()) {
+                members = userRepository.findByIdIn(memberObjectIds);
+            }
+        }
 
         return new ProjectResponse(
                 project.getId(),

@@ -5,6 +5,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 @Document(collection = "issues")
@@ -23,6 +24,11 @@ public class Issue {
     private String reporterId;
     private String assigneeId;
     private int order;
+    private String sprintId;
+
+    // Phase 1: Subtask & Dependency fields
+    private String parentId;                                     // null for top-level issues; set for subtasks
+    private List<String> dependencies = new ArrayList<>();       // IDs of issues that block this issue
 
     private List<String> comments;
 
@@ -70,6 +76,15 @@ public class Issue {
 
     public int getOrder() { return order; }
     public void setOrder(int order) { this.order = order; }
+
+    public String getSprintId() { return sprintId; }
+    public void setSprintId(String sprintId) { this.sprintId = sprintId; }
+
+    public String getParentId() { return parentId; }
+    public void setParentId(String parentId) { this.parentId = parentId; }
+
+    public List<String> getDependencies() { return dependencies; }
+    public void setDependencies(List<String> dependencies) { this.dependencies = dependencies; }
 
     public List<String> getComments() { return comments; }
     public void setComments(List<String> comments) { this.comments = comments; }

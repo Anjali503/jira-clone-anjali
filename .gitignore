@@ -1,0 +1,6 @@
+server/.env
+server/target/
+client/node_modules/
+node_modules/
+*.log
+.vscode/

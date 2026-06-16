@@ -27,7 +27,7 @@ const page = () => {
       setloading(true);
       const res = await axiosInstance.get("api/projects");
       const userproject = res.data?.filter(
-        (p: any) => p.ownerId === user?.id || p.memberIds.includes(user?.id),
+        (p: any) => p.ownerId === user?.id || p.memberIds?.includes(user?.id),
       );
       setProject(userproject);
     } catch (error) {
@@ -163,7 +163,7 @@ const page = () => {
                   <div className="flex items-center gap-4 text-sm">
                     <div className="flex items-center gap-2 text-[#5E6C84]">
                       <Users className="h-4 w-4" />
-                      <span>{project.memberIds.length} members</span>
+                      <span>{project.memberIds?.length || 0} members</span>
                     </div>
                     <div className="flex items-center gap-2 text-[#5E6C84]">
                       <span>{projectIssues.length} issues</span>
