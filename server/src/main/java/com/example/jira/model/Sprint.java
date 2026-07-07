@@ -18,6 +18,7 @@ public class Sprint {
     private Instant endDate;
     private String status; 
     private String goal;
+    private Double totalLoggedHours = 0.0;
 
     public String getId() {
         return id != null ? id.toHexString() : null;
@@ -48,4 +49,7 @@ public class Sprint {
 
     public String getGoal() { return goal; }
     public void setGoal(String goal) { this.goal = goal; }
+
+    public Double getTotalLoggedHours() { return totalLoggedHours; }
+    public void setTotalLoggedHours(Double totalLoggedHours) { this.totalLoggedHours = totalLoggedHours; }
 }

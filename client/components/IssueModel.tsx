@@ -3,10 +3,11 @@
 import React, { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
-import { MoreHorizontal, Trash2, ExternalLink } from "lucide-react";
+import { MoreHorizontal, Trash2, ExternalLink, Clock, Edit } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Textarea } from "./ui/textarea";
 import { Badge } from "./ui/badge";
+import { WorkLogModal } from "./WorkLogModal";
 import axiosInstance from "@/lib/Axiosinstance";
 import { useAuth } from "@/lib/AuthContext";
 
@@ -30,6 +31,17 @@ const IssueModel = ({ issue, isOpen, onClose }: any) => {
   const [loading, setLoading] = useState(false);
   const [localIssue, setLocalIssue] = useState<any>(null);
 
+  // WorkLog state
+  const [workLogs, setWorkLogs] = useState<any[]>([]);
+  const [workLogLoading, setWorkLogLoading] = useState(false);
+  const [workLogError, setWorkLogError] = useState<string>("");
+  const [workLogModalOpen, setWorkLogModalOpen] = useState(false);
+  const [selectedWorkLog, setSelectedWorkLog] = useState<any>(null);
+  // New sprint state for total logged hours
+  const [sprint, setSprint] = useState<any>(null);
+  const [sprintLoading, setSprintLoading] = useState(false);
+  const [sprintError, setSprintError] = useState<string>("");
+
   useEffect(() => {
     if (!isOpen || !issue?.id) return;
 
@@ -37,10 +49,24 @@ const IssueModel = ({ issue, isOpen, onClose }: any) => {
       try {
         setLoading(true);
         setLocalIssue(issue);
+        // Fetch work logs for this issue
+        setWorkLogLoading(true);
+        const res = await axiosInstance.get(`/api/worklogs?issueId=${issue.id}`);
+        setWorkLogs(res.data);
+        // If issue has sprint, fetch sprint details for total logged hours
+        if (issue.sprintId) {
+          setSprintLoading(true);
+          const sprintRes = await axiosInstance.get(`/api/sprints/${issue.sprintId}`);
+          setSprint(sprintRes.data);
+        }
       } catch (err) {
-        console.error("Failed to load issue", err);
+        console.error("Failed to load issue or worklogs", err);
+        setWorkLogError("Failed to load work logs.");
+        setSprintError("Failed to load sprint data.");
       } finally {
         setLoading(false);
+        setWorkLogLoading(false);
+        setSprintLoading(false);
       }
     };
 
@@ -106,13 +132,56 @@ const IssueModel = ({ issue, isOpen, onClose }: any) => {
     }
   };
 
+  // WorkLog handlers
+  const openAddWorkLog = () => {
+    setSelectedWorkLog(null);
+    setWorkLogModalOpen(true);
+  };
+
+  const openEditWorkLog = (log: any) => {
+    setSelectedWorkLog(log);
+    setWorkLogModalOpen(true);
+  };
+
+  const deleteWorkLog = async (logId: string) => {
+    if (!window.confirm("Delete this work log?")) return;
+    try {
+      setWorkLogLoading(true);
+      await axiosInstance.delete(`/api/worklogs/${logId}?confirm=true`);
+      setWorkLogs((prev) => prev.filter((l) => l.id !== logId));
+    } catch (err) {
+      console.error("Failed to delete work log", err);
+      setWorkLogError("Unable to delete work log.");
+    } finally {
+      setWorkLogLoading(false);
+    }
+  };
+
+  const handleWorkLogSaved = async () => {
+    // Refresh worklogs after add/edit
+    try {
+      setWorkLogLoading(true);
+      const res = await axiosInstance.get(`/api/worklogs?issueId=${localIssue?.id}`);
+      setWorkLogs(res.data);
+    } catch (err) {
+      console.error("Failed to refresh work logs", err);
+      setWorkLogError("Failed to refresh work logs.");
+    } finally {
+      setWorkLogLoading(false);
+    }
+  };
+
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 gap-0 border-none shadow-2xl">
-        <DialogHeader className="p-4 border-b">
+        <DialogHeader className="p-4 border-b flex justify-between items-center">
           <DialogTitle className="text-sm font-semibold text-[#5E6C84]">
             {localIssue?.title ?? "Loading issue…"}
           </DialogTitle>
+          <Button size="sm" variant="outline" onClick={openAddWorkLog} className="bg-[#0052CC] text-white">
+            Log Work
+          </Button>
         </DialogHeader>
 
         {!localIssue || loading ? (
@@ -194,6 +263,49 @@ const IssueModel = ({ issue, isOpen, onClose }: any) => {
                 </div>
 
                 <div>
+                  <h3 className="text-xs font-bold uppercase mb-1">Total Logged Hours (Task)</h3>
+                  <span className="text-sm font-medium">{localIssue?.totalLoggedHours?.toFixed(2) ?? "0"} hrs</span>
+                  {sprint && (
+                    <>
+                      <h3 className="text-xs font-bold uppercase mt-4 mb-1">Total Logged Hours (Sprint)</h3>
+                      <span className="text-sm font-medium">{sprint?.totalLoggedHours?.toFixed(2) ?? "0"} hrs</span>
+                    </>
+                  )}
+                  <div className="mt-4"></div>
+                </div>
+                {/* Work Logs */}
+                <div className="mt-4">
+                  <h3 className="text-xs font-bold uppercase mb-1">Work Logs</h3>
+                  {workLogLoading ? (
+                    <p className="text-sm text-[#6B778C]">Loading work logs...</p>
+                  ) : workLogs.length > 0 ? (
+                    <ul className="space-y-2">
+                      {workLogs.map((log) => (
+                        <li key={log.id} className="flex justify-between items-center border p-2 rounded">
+                          <div>
+                            <p className="text-sm font-medium">{new Date(log.date).toLocaleDateString()}</p>
+                            <p className="text-xs text-[#5E6C84]">{log.duration} hrs – {log.description}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => openEditWorkLog(log)} title="Edit">
+                              <Edit className="h-4 w-4 text-[#0052CC]" />
+                            </button>
+                            <button onClick={() => deleteWorkLog(log.id)} title="Delete">
+                              <Trash2 className="h-4 w-4 text-red-600" />
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-[#6B778C] italic">No work logs yet.</p>
+                  )}
+                  {workLogError && (
+                    <p className="text-xs text-red-600 mt-1">{workLogError}</p>
+                  )}
+                </div>
+
+                <div>
                   <h3 className="text-xs font-bold uppercase mb-1">Type</h3>
                   <span>
                     {typeIcons[localIssue.type]} {localIssue.type}
@@ -225,6 +337,14 @@ const IssueModel = ({ issue, isOpen, onClose }: any) => {
         )}
       </DialogContent>
     </Dialog>
+    <WorkLogModal
+        taskId={localIssue?.id}
+        workLog={selectedWorkLog}
+        open={workLogModalOpen}
+        onClose={() => setWorkLogModalOpen(false)}
+        onSaved={handleWorkLogSaved}
+      />
+    </>
   );
 };
 
