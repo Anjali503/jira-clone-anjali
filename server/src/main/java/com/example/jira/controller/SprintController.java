@@ -1,14 +1,20 @@
 package com.example.jira.controller;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import com.example.jira.model.Issue;
+import com.example.jira.model.Project;
 import com.example.jira.model.Sprint;
 import com.example.jira.repository.IssueRepository;
+import com.example.jira.repository.Projectrepository;
 import com.example.jira.repository.SprintRepository;
+import com.example.jira.service.NotificationService;
 import org.bson.types.ObjectId;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @CrossOrigin(origins = "*")
 @RestController
@@ -17,12 +23,18 @@ public class SprintController {
 
     private final SprintRepository sprintRepository;
     private final IssueRepository issueRepository;
+    private final Projectrepository projectrepository;
+    private final NotificationService notificationService;
 
     public SprintController(
             SprintRepository sprintRepository,
-            IssueRepository issueRepository) {
+            IssueRepository issueRepository,
+            Projectrepository projectrepository,
+            NotificationService notificationService) {
         this.sprintRepository = sprintRepository;
         this.issueRepository = issueRepository;
+        this.projectrepository = projectrepository;
+        this.notificationService = notificationService;
     }
 
     // =========================
@@ -54,7 +66,9 @@ public class SprintController {
         sprint.setStatus("ACTIVE");
         sprint.setStartDate(Instant.now());
 
-        return sprintRepository.save(sprint);
+        Sprint saved = sprintRepository.save(sprint);
+        notifySprintEvent(saved, "SPRINT_START", "has started");
+        return saved;
     }
 
     // =========================
@@ -69,7 +83,9 @@ public class SprintController {
         sprint.setStatus("COMPLETED");
         sprint.setEndDate(Instant.now());
 
-        return sprintRepository.save(sprint);
+        Sprint saved = sprintRepository.save(sprint);
+        notifySprintEvent(saved, "SPRINT_END", "has ended");
+        return saved;
     }
 
     // =========================
@@ -114,5 +130,39 @@ public class SprintController {
         issue.setProjectId(sprintId); // OR add sprintId field if you prefer
 
         return issueRepository.save(issue);
+    }
+
+    private void notifySprintEvent(Sprint sprint, String type, String actionPhrase) {
+        List<String> recipientIds = resolveProjectMemberIds(sprint.getProjectId());
+        String sprintId = sprint.getId();
+        String sprintName = sprint.getName() != null ? sprint.getName() : "Sprint";
+
+        for (String userId : recipientIds) {
+            String dedupKey = type + ":" + sprintId + ":" + userId;
+            String message = "Sprint '" + sprintName + "' " + actionPhrase + ".";
+            notificationService.notifyUser(userId, type, message, dedupKey);
+        }
+    }
+
+    private List<String> resolveProjectMemberIds(String projectId) {
+        if (projectId == null || projectId.isBlank() || !ObjectId.isValid(projectId)) {
+            return List.of();
+        }
+
+        Project project = projectrepository.findById(new ObjectId(projectId)).orElse(null);
+        if (project == null) {
+            return List.of();
+        }
+
+        Set<String> ids = new LinkedHashSet<>();
+        if (project.getOwnerId() != null && !project.getOwnerId().isBlank()) {
+            ids.add(project.getOwnerId());
+        }
+        if (project.getMemberIds() != null) {
+            project.getMemberIds().stream()
+                    .filter(id -> id != null && !id.isBlank())
+                    .forEach(ids::add);
+        }
+        return new ArrayList<>(ids);
     }
 }

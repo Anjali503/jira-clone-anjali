@@ -25,12 +25,17 @@ public class Issue {
     private String assigneeId;
     private int order;
     private String sprintId;
+    // List of attachment IDs associated with this issue
+    private List<ObjectId> attachmentIds;
+    private Double totalLoggedHours = 0.0;
 
     // Phase 1: Subtask & Dependency fields
     private String parentId;                                     // null for top-level issues; set for subtasks
     private List<String> dependencies = new ArrayList<>();       // IDs of issues that block this issue
 
     private List<String> comments;
+
+    private Instant dueDate;
 
     private Instant createdAt = Instant.now();
     private Instant updatedAt = Instant.now();
@@ -80,6 +85,12 @@ public class Issue {
     public String getSprintId() { return sprintId; }
     public void setSprintId(String sprintId) { this.sprintId = sprintId; }
 
+    public List<ObjectId> getAttachmentIds() { return attachmentIds; }
+    public void setAttachmentIds(List<ObjectId> attachmentIds) { this.attachmentIds = attachmentIds; }
+
+    public Double getTotalLoggedHours() { return totalLoggedHours; }
+    public void setTotalLoggedHours(Double totalLoggedHours) { this.totalLoggedHours = totalLoggedHours; }
+
     public String getParentId() { return parentId; }
     public void setParentId(String parentId) { this.parentId = parentId; }
 
@@ -88,6 +99,9 @@ public class Issue {
 
     public List<String> getComments() { return comments; }
     public void setComments(List<String> comments) { this.comments = comments; }
+
+    public Instant getDueDate() { return dueDate; }
+    public void setDueDate(Instant dueDate) { this.dueDate = dueDate; }
 
     public Instant getCreatedAt() { return createdAt; }
 
