@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { AlertCircle } from "lucide-react";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import { useAuth } from "@/lib/AuthContext";
 import axiosInstance from "@/lib/Axiosinstance";
+import DependencyPicker from "./DependencyPicker";
 
 const CreateIssuemodel = ({ isOpen, onClose }: any) => {
   const { user, selectedProject } = useAuth();
@@ -21,12 +22,14 @@ const CreateIssuemodel = ({ isOpen, onClose }: any) => {
   const [isloading, setIsloading] = useState(false);
   const [error, setError] = useState("");
   const [teamMembers, setteamMembers] = useState([]);
+  const [projectIssues, setProjectIssues] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     type: "TASK",
     priority: "MEDIUM",
     assigneeId: "",
+    dependencies: [] as string[],
   });
   useEffect(() => {
     if (!selectedProject?.id || !isOpen) return;
@@ -35,7 +38,11 @@ const CreateIssuemodel = ({ isOpen, onClose }: any) => {
         const res = await axiosInstance.get(
           `/api/projects/${selectedProject?.id}`,
         );
+        const issuesRes = await axiosInstance.get(
+          `/api/issues/project/${selectedProject?.id}`,
+        );
         setteamMembers(res.data.members || []);
+        setProjectIssues(issuesRes.data || []);
       } catch (error) {
         console.log(error);
       }
@@ -71,6 +78,7 @@ const CreateIssuemodel = ({ isOpen, onClose }: any) => {
         projectId: selectedProject?.id,
         reporterId: user?.id,
         assigneeId: formData.assigneeId || null,
+        dependencies: formData.dependencies,
         order: 0,
       });
 
@@ -85,6 +93,7 @@ const CreateIssuemodel = ({ isOpen, onClose }: any) => {
         type: "TASK",
         priority: "MEDIUM",
         assigneeId: "",
+        dependencies: [],
       });
     }
   };
@@ -113,6 +122,9 @@ const CreateIssuemodel = ({ isOpen, onClose }: any) => {
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Create Issue</DialogTitle>
+          <DialogDescription className="text-xs text-[#6B778C]">
+            Fill in the issue details and assign it to a project member.
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -204,6 +216,22 @@ const CreateIssuemodel = ({ isOpen, onClose }: any) => {
             </div>
           </div>
 
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-[#172B4D]">
+              Dependencies
+            </label>
+            <DependencyPicker
+              issues={projectIssues}
+              selectedIds={formData.dependencies}
+              onChange={(dependencies: string[]) =>
+                setFormData((prevData) => ({
+                  ...prevData,
+                  dependencies,
+                }))
+              }
+            />
+          </div>
+
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={onClose} disabled={isloading}>
               Cancel
@@ -223,3 +251,4 @@ const CreateIssuemodel = ({ isOpen, onClose }: any) => {
 };
 
 export default CreateIssuemodel;
+

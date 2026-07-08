@@ -37,14 +37,23 @@ const page = () => {
     }));
     setError("");
   };
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const form = e.currentTarget;
+    const emailInput = form.elements.namedItem("email") as HTMLInputElement | null;
+    const passwordInput = form.elements.namedItem("password") as HTMLInputElement | null;
+    const nameInput = form.elements.namedItem("name") as HTMLInputElement | null;
+    const email = emailInput?.value || formData.email;
+    const password = passwordInput?.value || formData.password;
+    const name = nameInput?.value || formData.name;
+
     try {
+      setIsLoading(true);
       if (isSignUp) {
         const res = await axiosInstance.post("/api/users/signup", {
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
+          name,
+          email,
+          password,
           role: "USER",
           avatar: "https://i.pravatar.cc/150?u=john",
         });
@@ -53,16 +62,18 @@ const page = () => {
         router.push("/setup-project");
       } else {
         const res = await axiosInstance.post("/api/users/login", {
-          email: formData.email,
-          password: formData.password,
+          email,
+          password,
         });
         const user = res.data;
         login(user);
         router.push("/");
       }
     } catch (error: any) {
-      setError(error.response?.data?.message);
+      setError(error.response?.data?.message || "An error occurred.");
       console.log(error);
+    } finally {
+      setIsLoading(false);
     }
   };
   return (

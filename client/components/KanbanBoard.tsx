@@ -37,7 +37,7 @@ const KanbanBoard = () => {
   const [selectedIssue, setSelectedIssue] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // ✅ FIX: stable mount flag for portal
+  // stable mount flag for portal
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -116,6 +116,7 @@ const KanbanBoard = () => {
         sprintId: updatedIssue.sprintId ?? null,
         order: updatedIssue.order ?? 0,
         comments: updatedIssue.comments ?? [],
+        dependencies: updatedIssue.dependencies ?? [],
         updatedAt: updatedIssue.updatedAt,
       });
     } catch (err) {
@@ -124,6 +125,15 @@ const KanbanBoard = () => {
     }
   };
 
+  const handleIssueCreated = (createdIssue: any) => {
+    setIssues((prev) => {
+      if (!createdIssue?.id || prev.some((issue) => issue.id === createdIssue.id)) {
+        return prev;
+      }
+
+      return [...prev, createdIssue];
+    });
+  };
   if (!selectedProject) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-[#6B778C]">
@@ -141,7 +151,7 @@ const KanbanBoard = () => {
     >
       {loading ? (
         <div className="flex h-full items-center justify-center text-sm text-[#6B778C]">
-          Loading board…
+          Loading board...
         </div>
       ) : (
         <div className="flex h-full gap-4 pb-4">
@@ -172,9 +182,11 @@ const KanbanBoard = () => {
         issue={selectedIssue}
         isOpen={!!selectedIssue}
         onClose={() => setSelectedIssue(null)}
+        allIssues={issues}
+        onIssueCreated={handleIssueCreated}
       />
 
-      {/* ✅ FIXED: stable DragOverlay portal */}
+      {/* stable DragOverlay portal */}
       {isMounted &&
         !loading &&
         createPortal(
@@ -196,3 +208,4 @@ const KanbanBoard = () => {
 };
 
 export default KanbanBoard;
+

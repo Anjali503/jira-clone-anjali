@@ -18,6 +18,7 @@ import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import CreateIssuemodel from "./CreateIssuemodel";
+import NotificationBell from "./NotificationBell";
 import { useAuth } from "@/lib/AuthContext";
 import axiosInstance from "@/lib/Axiosinstance";
 
@@ -96,13 +97,16 @@ const Sidebar = () => {
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-[#F4F5F7] text-[#42526E]">
       {/* Header */}
-      <div className="flex items-center gap-2 p-4 pt-6">
-        <div className="flex h-8 w-8 items-center justify-center rounded bg-[#0052CC] text-white">
-          <FolderKanban className="h-5 w-5" />
+      <div className="flex items-center justify-between gap-2 p-4 pt-6">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded bg-[#0052CC] text-white">
+            <FolderKanban className="h-5 w-5" />
+          </div>
+          <span className="text-xl font-bold tracking-tight text-[#172B4D]">
+            Jira Clone
+          </span>
         </div>
-        <span className="text-xl font-bold tracking-tight text-[#172B4D]">
-          Jira Clone
-        </span>
+        <NotificationBell />
       </div>
 
       {/* Project Selector */}

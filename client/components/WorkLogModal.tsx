@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -101,6 +101,9 @@ export const WorkLogModal: React.FC<WorkLogModalProps> = ({
           <DialogTitle className="text-lg font-semibold text-[#172B4D]">
             {isEdit ? "Edit Work Log" : "Add Work Log"}
           </DialogTitle>
+          <DialogDescription className="text-sm text-[#5E6C84]">
+            Enter the date, duration in hours, and a short note for this work log.
+          </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4 py-4">
           {error && (

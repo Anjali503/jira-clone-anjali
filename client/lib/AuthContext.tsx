@@ -8,8 +8,10 @@ type User = {
   email: string;
   role: string;
   avatar?: string;
+  phone?: string;
   group?: string;
   createdAt?: any;
+  lastLoginAt?: any;
 };
 export type Project = {
   id: string;
