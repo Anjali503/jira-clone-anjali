@@ -25,6 +25,13 @@ const page = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const { login } = useAuth();
+  const passwordRequirements = [
+    { label: "At least 8 characters", test: (p: string) => p.length >= 8 },
+    { label: "One uppercase letter", test: (p: string) => /[A-Z]/.test(p) },
+    { label: "One lowercase letter", test: (p: string) => /[a-z]/.test(p) },
+    { label: "One number", test: (p: string) => /\d/.test(p) },
+    { label: "One special character", test: (p: string) => /[^A-Za-z0-9]/.test(p) },
+  ];
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
@@ -50,6 +57,12 @@ const page = () => {
     try {
       setIsLoading(true);
       if (isSignUp) {
+        const allValid = passwordRequirements.every(r => r.test(password));
+        if (!allValid) {
+          setError("Password must be at least 8 characters and include uppercase, lowercase, digit, and special character.");
+          setIsLoading(false);
+          return;
+        }
         const res = await axiosInstance.post("/api/users/signup", {
           name,
           email,
@@ -148,7 +161,7 @@ const page = () => {
                   type="password"
                   name="password"
                   placeholder={
-                    isSignUp ? "At least 6 characters" : "Your password"
+                    isSignUp ? "At least 8 characters" : "Your password"
                   }
                   required
                   className="h-10 border-[#DFE1E6] focus-visible:ring-[#0052CC]"
@@ -156,9 +169,24 @@ const page = () => {
                   onChange={handleChange}
                 />
                 {isSignUp && (
-                  <p className="text-xs text-[#6B778C]">
-                    Password must be at least 6 characters
-                  </p>
+                  <div className="text-xs space-y-1">
+                    {passwordRequirements.map((req, i) => {
+                      const met = req.test(formData.password);
+                      return (
+                        <div
+                          key={i}
+                          className={
+                            met && formData.password
+                              ? "text-green-600"
+                              : "text-[#6B778C]"
+                          }
+                        >
+                          {met && formData.password ? "✓ " : "• "}
+                          {req.label}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
 
