@@ -46,13 +46,7 @@ const page = () => {
   };
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const form = e.currentTarget;
-    const emailInput = form.elements.namedItem("email") as HTMLInputElement | null;
-    const passwordInput = form.elements.namedItem("password") as HTMLInputElement | null;
-    const nameInput = form.elements.namedItem("name") as HTMLInputElement | null;
-    const email = emailInput?.value || formData.email;
-    const password = passwordInput?.value || formData.password;
-    const name = nameInput?.value || formData.name;
+    const { name, email, password } = formData;
 
     try {
       setIsLoading(true);
