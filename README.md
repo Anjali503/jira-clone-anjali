@@ -177,21 +177,6 @@ NEXT_PUBLIC_API_URL=
 ```
 
 ---
-
-# 📸 Screenshots
-
-> Add screenshots of:
-
-- Login
-- Dashboard
-- Kanban Board
-- Project Page
-- Issue Details
-- Notifications
-- User Profile
-
----
-
 # 📈 Future Enhancements
 
 - JWT Authentication
