@@ -1,0 +1,585 @@
+diff --git a/client/app/backlog/page.tsx b/client/app/backlog/page.tsx
+index 58fc4b4..953ea2b 100644
+--- a/client/app/backlog/page.tsx
++++ b/client/app/backlog/page.tsx
+@@ -159,11 +159,22 @@ const page = () => {
+ 
+       <div className="flex-1 overflow-y-auto space-y-6 pr-2">
+         {/* Sprint Section */}
+-        {/* {activeSprint && (
+-          <section>
++        <section>
++          {activeSprint ? (
+             <SprintSection sprint={activeSprint} issues={sprintIssues} />
+-          </section>
+-        )} */}
++          ) : (
++            <div className="border rounded-md p-4 flex items-center justify-between bg-[#F4F5F7]">
++              <div>
++                <p className="text-sm font-semibold text-[#172B4D]">
++                  No active sprint
++                </p>
++                <p className="text-xs text-[#5E6C84]">
++                  Start a sprint to move issues out of the backlog and onto the board.
++                </p>
++              </div>
++            </div>
++          )}
++        </section>
+ 
+         {/* Backlog Section */}
+         <section>
+diff --git a/client/app/projects/page.tsx b/client/app/projects/page.tsx
+index 4385dc9..36468a8 100644
+--- a/client/app/projects/page.tsx
++++ b/client/app/projects/page.tsx
+@@ -11,7 +11,6 @@ import {
+ import { useAuth } from "@/lib/AuthContext";
+ import axiosInstance from "@/lib/Axiosinstance";
+ import { Calendar, Plus, Users } from "lucide-react";
+-import { projectShutdown } from "next/dist/build/swc/generated-native";
+ import Link from "next/link";
+ import { useRouter } from "next/navigation";
+ import React, { useEffect, useState } from "react";
+@@ -36,25 +35,37 @@ const page = () => {
+       setloading(false);
+     }
+   };
+-  const fetchissuesforproject = async (projectid: string) => {
+-    try {
+-      const res = await axiosInstance.get(`api/issues/project/${projectid}`);
+-      setissuesbyproject((prev: any) => ({
+-        ...prev,
+-        [projectid]: res.data,
+-      }));
+-    } catch (error) {
+-      console.error(error);
+-    }
++  // Fetches issue counts for every project in parallel (one request per
++  // project, fired together via Promise.all) instead of firing them
++  // untracked inside a forEach with no shared loading/error state.
++  const fetchissuesforallprojects = async (projects: any[]) => {
++    if (projects.length === 0) return;
++
++    const results = await Promise.all(
++      projects.map((p: any) =>
++        axiosInstance
++          .get(`api/issues/project/${p.id}`)
++          .then((res) => ({ id: p.id, issues: res.data }))
++          .catch((error) => {
++            console.error(`Failed to load issues for project ${p.id}`, error);
++            return { id: p.id, issues: [] };
++          }),
++      ),
++    );
++
++    const map: Record<string, any> = {};
++    results.forEach(({ id, issues }) => {
++      map[id] = issues;
++    });
++    setissuesbyproject(map);
+   };
++
+   useEffect(() => {
+     if (!user) return;
+     fetchproject();
+   }, [user]);
+   useEffect(() => {
+-    project.forEach((project: any) => {
+-      fetchissuesforproject(project.id);
+-    });
++    fetchissuesforallprojects(project);
+   }, [project]);
+   if (loading) {
+     return (
+diff --git a/client/components/IssueModel.tsx b/client/components/IssueModel.tsx
+index 21fbd92..822db01 100644
+--- a/client/components/IssueModel.tsx
++++ b/client/components/IssueModel.tsx
+@@ -59,52 +59,73 @@ const IssueModel = ({ issue, isOpen, onClose, allIssues = [], onIssueCreated }:
+   const loadIssueDetails = async (issueToLoad: any) => {
+     if (!issueToLoad?.id) return;
+ 
+-    try {
+-      setLoading(true);
+-      setWorkLogLoading(true);
+-      setSprint(null);
+-      setSprintError("");
+-      setWorkLogError("");
+-
+-      setLocalIssue(issueToLoad);
++    const issueId = issueToLoad.id;
++
++    setLoading(true);
++    setWorkLogLoading(true);
++    setSprint(null);
++    setSprintError("");
++    setWorkLogError("");
++    setLocalIssue(issueToLoad);
++
++    // All independent reads fire together instead of waiting on each
++    // other one-by-one. The sprint fetch uses the sprintId already
++    // present on the issue passed in (it comes from the board/backlog
++    // list, which already has it) so it doesn't need to wait for the
++    // issue-detail call to resolve first.
++    if (issueToLoad.sprintId) {
++      setSprintLoading(true);
++    }
+ 
+-      const issueRes = await axiosInstance.get(`/api/issues/${issueToLoad.id}`);
+-      const latestIssue = issueRes.data;
+-      setLocalIssue(latestIssue);
++    const [issueResult, workLogResult, subtasksResult, sprintResult] =
++      await Promise.allSettled([
++        axiosInstance.get(`/api/issues/${issueId}`),
++        axiosInstance.get(`/api/worklogs?issueId=${issueId}`),
++        axiosInstance.get(`/api/issues/parent/${issueId}`),
++        issueToLoad.sprintId
++          ? axiosInstance.get(`/api/sprints/${issueToLoad.sprintId}`)
++          : Promise.resolve(null),
++      ]);
++
++    // Attachments manage their own loading/error state and are also
++    // reused after upload, so they're kicked off in parallel too rather
++    // than folded into the Promise.allSettled above.
++    loadAttachments(issueId);
++
++    if (issueResult.status === "fulfilled") {
++      setLocalIssue(issueResult.value.data);
++    } else {
++      console.error("Failed to load issue details", issueResult.reason);
++    }
+ 
+-      const workLogRes = await axiosInstance.get(
+-        `/api/worklogs?issueId=${latestIssue.id}`,
+-      );
++    if (workLogResult.status === "fulfilled") {
+       setWorkLogs(
+-        (workLogRes.data || []).map((log: any) => ({
++        (workLogResult.value.data || []).map((log: any) => ({
+           ...log,
+           id: normalizeId(log.id),
+         })),
+       );
++    } else {
++      console.error("Failed to load work logs", workLogResult.reason);
++      setWorkLogError("Failed to load work logs.");
++    }
+ 
+-      const subtasksRes = await axiosInstance.get(
+-        `/api/issues/parent/${latestIssue.id}`,
+-      );
+-      setSubtasks(subtasksRes.data || []);
+-
+-      await loadAttachments(latestIssue.id);
++    if (subtasksResult.status === "fulfilled") {
++      setSubtasks(subtasksResult.value.data || []);
++    } else {
++      console.error("Failed to load subtasks", subtasksResult.reason);
++    }
+ 
+-      if (latestIssue.sprintId) {
+-        setSprintLoading(true);
+-        const sprintRes = await axiosInstance.get(
+-          `/api/sprints/${latestIssue.sprintId}`,
+-        );
+-        setSprint(sprintRes.data);
+-      }
+-    } catch (err) {
+-      console.error("Failed to load issue details", err);
+-      setWorkLogError("Failed to load work logs.");
++    if (sprintResult.status === "fulfilled" && sprintResult.value) {
++      setSprint(sprintResult.value.data);
++    } else if (sprintResult.status === "rejected") {
++      console.error("Failed to load sprint data", sprintResult.reason);
+       setSprintError("Failed to load sprint data.");
+-    } finally {
+-      setLoading(false);
+-      setWorkLogLoading(false);
+-      setSprintLoading(false);
+     }
++
++    setLoading(false);
++    setWorkLogLoading(false);
++    setSprintLoading(false);
+   };
+ 
+   useEffect(() => {
+@@ -142,10 +163,14 @@ const IssueModel = ({ issue, isOpen, onClose, allIssues = [], onIssueCreated }:
+     try {
+       setLoading(true);
+ 
+-      const updatedComments = [
+-        ...(localIssue.comments || []),
+-        commentText, // ONLY STRING
+-      ];
++      const newComment = {
++        text: commentText,
++        authorId: user.id,
++        authorName: user.name,
++        createdAt: new Date().toISOString(),
++      };
++
++      const updatedComments = [...(localIssue.comments || []), newComment];
+ 
+       await axiosInstance.put(`/api/issues/${localIssue.id}`, {
+         title: localIssue.title,
+@@ -176,6 +201,22 @@ const IssueModel = ({ issue, isOpen, onClose, allIssues = [], onIssueCreated }:
+     }
+   };
+ 
++  // Renders both the new comment shape ({ text, authorName, createdAt })
++  // and any legacy plain-string comments that may already exist in the
++  // database, so old issues don't break or silently drop comments.
++  const formatRelativeTime = (iso: string) => {
++    const date = new Date(iso);
++    const diffMs = Date.now() - date.getTime();
++    const diffMins = Math.round(diffMs / 60000);
++    if (diffMins < 1) return "just now";
++    if (diffMins < 60) return `${diffMins}m ago`;
++    const diffHours = Math.round(diffMins / 60);
++    if (diffHours < 24) return `${diffHours}h ago`;
++    const diffDays = Math.round(diffHours / 24);
++    if (diffDays < 7) return `${diffDays}d ago`;
++    return date.toLocaleDateString();
++  };
++
+   const createSubtask = async (e: React.FormEvent) => {
+     e.preventDefault();
+     if (!subtaskForm.title.trim() || !localIssue?.id || !user?.id) return;
+@@ -433,18 +474,40 @@ const IssueModel = ({ issue, isOpen, onClose, allIssues = [], onIssueCreated }:
+               <div className="space-y-4 mb-6">
+                 {localIssue.comments?.length > 0 ? (
+                   <div className="space-y-3">
+-                    {localIssue.comments.map(
+-                      (comment: string, index: number) => (
++                    {localIssue.comments.map((comment: any, index: number) => {
++                      // Legacy comments were stored as plain strings with
++                      // no author or timestamp. Render those gracefully
++                      // instead of crashing on older issues.
++                      const isLegacyString = typeof comment === "string";
++                      const text = isLegacyString ? comment : comment.text;
++                      const authorName = isLegacyString
++                        ? null
++                        : comment.authorName;
++                      const createdAt = isLegacyString
++                        ? null
++                        : comment.createdAt;
++
++                      return (
+                         <div
+                           key={index}
+                           className="rounded-md border border-[#DFE1E6] bg-[#F4F5F7] p-3"
+                         >
++                          <div className="flex items-center gap-2 mb-1">
++                            <span className="text-xs font-semibold text-[#172B4D]">
++                              {authorName || "Unknown"}
++                            </span>
++                            {createdAt && (
++                              <span className="text-[11px] text-[#6B778C]">
++                                {formatRelativeTime(createdAt)}
++                              </span>
++                            )}
++                          </div>
+                           <p className="text-sm text-[#172B4D] whitespace-pre-wrap">
+-                            {comment}
++                            {text}
+                           </p>
+                         </div>
+-                      ),
+-                    )}
++                      );
++                    })}
+                   </div>
+                 ) : (
+                   <p className="text-sm text-[#6B778C] italic">
+diff --git a/client/components/KanbanBoard.tsx b/client/components/KanbanBoard.tsx
+index 460da9e..03e39ae 100644
+--- a/client/components/KanbanBoard.tsx
++++ b/client/components/KanbanBoard.tsx
+@@ -33,6 +33,7 @@ const KanbanBoard = () => {
+   const searchQuery = searchParams.get("search")?.toLowerCase() || "";
+ 
+   const [issues, setIssues] = useState<any[]>([]);
++  const [assigneeMap, setAssigneeMap] = useState<Record<string, any>>({});
+   const [activeIssue, setActiveIssue] = useState<any | null>(null);
+   const [selectedIssue, setSelectedIssue] = useState<any | null>(null);
+   const [loading, setLoading] = useState(false);
+@@ -50,7 +51,9 @@ const KanbanBoard = () => {
+   );
+ 
+   /* =====================
+-     Fetch issues
++     Fetch issues + assignees
++     (batched: one request per UNIQUE assignee,
++     fired in parallel, instead of one request per card)
+   ===================== */
+   const fetchIssues = async () => {
+     if (!selectedProject?.id) return;
+@@ -60,7 +63,38 @@ const KanbanBoard = () => {
+       const res = await axiosInstance.get(
+         `/api/issues/project/${selectedProject.id}`
+       );
+-      setIssues(res.data);
++      const fetchedIssues = res.data;
++      setIssues(fetchedIssues);
++
++      const uniqueAssigneeIds: string[] = Array.from(
++        new Set(
++          fetchedIssues
++            .map((i: any) => i.assigneeId)
++            .filter((id: any): id is string => Boolean(id))
++        )
++      );
++
++      if (uniqueAssigneeIds.length > 0) {
++        const results = await Promise.all(
++          uniqueAssigneeIds.map((id) =>
++            axiosInstance
++              .get(`/api/users/${id}`)
++              .then((r) => ({ id, user: r.data }))
++              .catch((err) => {
++                console.error(`Failed to load assignee ${id}`, err);
++                return { id, user: null };
++              })
++          )
++        );
++
++        const map: Record<string, any> = {};
++        results.forEach(({ id, user }) => {
++          if (user) map[id] = user;
++        });
++        setAssigneeMap(map);
++      } else {
++        setAssigneeMap({});
++      }
+     } catch (err) {
+       console.error("Failed to load issues", err);
+     } finally {
+@@ -170,6 +204,7 @@ const KanbanBoard = () => {
+                 key={column.id}
+                 column={column}
+                 issues={columnIssues}
++                assigneeMap={assigneeMap}
+                 onIssueClick={setSelectedIssue}
+               />
+             );
+diff --git a/client/components/KanbanCard.tsx b/client/components/KanbanCard.tsx
+index 839f201..da823fe 100644
+--- a/client/components/KanbanCard.tsx
++++ b/client/components/KanbanCard.tsx
+@@ -1,15 +1,14 @@
+ "use client";
+ 
+-import React, { useEffect, useState } from "react";
++import React from "react";
+ import { useSortable } from "@dnd-kit/sortable";
+ import { CSS } from "@dnd-kit/utilities";
+ import { Badge } from "./ui/badge";
+ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+-import axiosInstance from "@/lib/Axiosinstance";
+-
+ 
+ interface KanbanCardProps {
+   issue: any;
++  assignee?: any;
+   isOverlay?: boolean;
+   onClick?: () => void;
+ }
+@@ -26,9 +25,7 @@ const issueTypeColors: Record<string, string> = {
+   STORY: "bg-purple-500",
+ };
+ 
+-const KanbanCard = ({ issue, isOverlay = false, onClick }: KanbanCardProps) => {
+-  const [assignee, setAssignee] = useState<any>(null);
+-
++const KanbanCard = ({ issue, assignee, isOverlay = false, onClick }: KanbanCardProps) => {
+   // ❗ useSortable ONLY for real cards, not overlay
+   const sortable = !isOverlay
+     ? useSortable({ id: issue.id })
+@@ -42,25 +39,9 @@ const KanbanCard = ({ issue, isOverlay = false, onClick }: KanbanCardProps) => {
+       }
+     : undefined;
+ 
+-  /* =====================
+-     Fetch assignee by ID
+-  ===================== */
+-  useEffect(() => {
+-    if (!issue?.assigneeId || isOverlay) return;
+-
+-    const fetchAssignee = async () => {
+-      try {
+-        const res = await axiosInstance.get(
+-          `/api/users/${issue.assigneeId}`,
+-        );
+-        setAssignee(res.data);
+-      } catch (err) {
+-        console.error("Failed to load assignee", err);
+-      }
+-    };
+-
+-    fetchAssignee();
+-  }, [issue?.assigneeId, isOverlay]);
++  // Assignee now comes pre-resolved from KanbanBoard's single batched
++  // fetch (one request per unique assignee for the whole board) instead
++  // of each card fetching its own assignee individually.
+ 
+   return (
+     <div
+diff --git a/client/components/KanbanColumn.tsx b/client/components/KanbanColumn.tsx
+index 38434c5..4141e05 100644
+--- a/client/components/KanbanColumn.tsx
++++ b/client/components/KanbanColumn.tsx
+@@ -7,7 +7,7 @@ import {
+ import React from "react";
+ import KanbanCard from "./KanbanCard";
+ 
+-const KanbanColumn = ({ column, issues, onIssueClick }: any) => {
++const KanbanColumn = ({ column, issues, assigneeMap, onIssueClick }: any) => {
+   const { setNodeRef } = useDroppable({
+     id: column.id,
+   });
+@@ -25,6 +25,7 @@ const KanbanColumn = ({ column, issues, onIssueClick }: any) => {
+             <KanbanCard
+               key={issue.id}
+               issue={issue}
++              assignee={issue.assigneeId ? assigneeMap?.[issue.assigneeId] : null}
+               onClick={() => onIssueClick(issue)}
+             />
+           ))}
+diff --git a/client/components/Sidebar.tsx b/client/components/Sidebar.tsx
+index 7536257..37fccb7 100644
+--- a/client/components/Sidebar.tsx
++++ b/client/components/Sidebar.tsx
+@@ -11,7 +11,7 @@ import {
+   Settings,
+   Users,
+ } from "lucide-react";
+-import { useRouter } from "next/navigation";
++import { useRouter, usePathname } from "next/navigation";
+ import { use, useEffect, useState } from "react";
+ import { Input } from "./ui/input";
+ import Link from "next/link";
+@@ -24,6 +24,7 @@ import axiosInstance from "@/lib/Axiosinstance";
+ 
+ const Sidebar = () => {
+   const router = useRouter();
++  const pathname = usePathname();
+   const { user, logout, selectedProject, setSelectedProject } = useAuth();
+   const [project, setProject] = useState([]);
+   const [loading, setloading] = useState(false);
+@@ -130,8 +131,11 @@ const Sidebar = () => {
+                 {project.map((project: any) => (
+                   <button
+                     key={project.id}
+-                    className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[#EBECF0] text-[#42526E]"
+-                    }`}
++                    onClick={() => {
++                      setSelectedProject(project);
++                      setShowprojectmenu(false);
++                    }}
++                    className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[#EBECF0] text-[#42526E]"
+                   >
+                     <div className="h-3 w-3 rounded-full bg-blue-500" />
+                     {project.name}
+@@ -167,26 +171,31 @@ const Sidebar = () => {
+             href="/"
+             icon={<LayoutDashboard className="h-4 w-4" />}
+             label="Kanban Board"
++            active={pathname === "/"}
+           />
+           <NavItem
+             href="/backlog"
+             icon={<ListTodo className="h-4 w-4" />}
+             label="Backlog"
++            active={pathname === "/backlog"}
+           />
+           <NavItem
+             href="/projects"
+             icon={<FolderKanban className="h-4 w-4" />}
+             label="Projects"
++            active={pathname === "/projects"}
+           />
+           <NavItem
+             href="/team"
+             icon={<Users className="h-4 w-4" />}
+             label="Team"
++            active={pathname === "/team"}
+           />
+           <NavItem
+             href="/profile"
+             icon={<Settings className="h-4 w-4" />}
+             label="Profile"
++            active={pathname === "/profile"}
+           />
+         </nav>
+       </div>
+diff --git a/server/src/main/java/com/example/jira/model/Comment.java b/server/src/main/java/com/example/jira/model/Comment.java
+new file mode 100644
+index 0000000..235b5bb
+--- /dev/null
++++ b/server/src/main/java/com/example/jira/model/Comment.java
+@@ -0,0 +1,39 @@
++package com.example.jira.model;
++
++import java.time.Instant;
++
++/**
++ * A single comment on an Issue. Previously comments were stored as raw
++ * Strings with no author or timestamp attached — this made it impossible
++ * to tell who said what, or when, once more than one person was working
++ * on an issue.
++ */
++public class Comment {
++
++    private String text;
++    private String authorId;
++    private String authorName;
++    private Instant createdAt = Instant.now();
++
++    public Comment() {
++    }
++
++    public Comment(String text, String authorId, String authorName) {
++        this.text = text;
++        this.authorId = authorId;
++        this.authorName = authorName;
++        this.createdAt = Instant.now();
++    }
++
++    public String getText() { return text; }
++    public void setText(String text) { this.text = text; }
++
++    public String getAuthorId() { return authorId; }
++    public void setAuthorId(String authorId) { this.authorId = authorId; }
++
++    public String getAuthorName() { return authorName; }
++    public void setAuthorName(String authorName) { this.authorName = authorName; }
++
++    public Instant getCreatedAt() { return createdAt; }
++    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
++}
+diff --git a/server/src/main/java/com/example/jira/model/Issue.java b/server/src/main/java/com/example/jira/model/Issue.java
+index 1dae915..7aeb948 100644
+--- a/server/src/main/java/com/example/jira/model/Issue.java
++++ b/server/src/main/java/com/example/jira/model/Issue.java
+@@ -33,7 +33,7 @@ public class Issue {
+     private String parentId;                                     // null for top-level issues; set for subtasks
+     private List<String> dependencies = new ArrayList<>();       // IDs of issues that block this issue
+ 
+-    private List<String> comments;
++    private List<Comment> comments;
+ 
+     private Instant dueDate;
+ 
+@@ -97,8 +97,8 @@ public class Issue {
+     public List<String> getDependencies() { return dependencies; }
+     public void setDependencies(List<String> dependencies) { this.dependencies = dependencies; }
+ 
+-    public List<String> getComments() { return comments; }
+-    public void setComments(List<String> comments) { this.comments = comments; }
++    public List<Comment> getComments() { return comments; }
++    public void setComments(List<Comment> comments) { this.comments = comments; }
+ 
+     public Instant getDueDate() { return dueDate; }
+     public void setDueDate(Instant dueDate) { this.dueDate = dueDate; }

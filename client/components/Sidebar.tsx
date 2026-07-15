@@ -11,7 +11,7 @@ import {
   Settings,
   Users,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { use, useEffect, useState } from "react";
 import { Input } from "./ui/input";
 import Link from "next/link";
@@ -24,6 +24,7 @@ import axiosInstance from "@/lib/Axiosinstance";
 
 const Sidebar = () => {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, logout, selectedProject, setSelectedProject } = useAuth();
   const [project, setProject] = useState([]);
   const [loading, setloading] = useState(false);
@@ -130,8 +131,11 @@ const Sidebar = () => {
                 {project.map((project: any) => (
                   <button
                     key={project.id}
-                    className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[#EBECF0] text-[#42526E]"
-                    }`}
+                    onClick={() => {
+                      setSelectedProject(project);
+                      setShowprojectmenu(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[#EBECF0] text-[#42526E]"
                   >
                     <div className="h-3 w-3 rounded-full bg-blue-500" />
                     {project.name}
@@ -167,26 +171,31 @@ const Sidebar = () => {
             href="/"
             icon={<LayoutDashboard className="h-4 w-4" />}
             label="Kanban Board"
+            active={pathname === "/"}
           />
           <NavItem
             href="/backlog"
             icon={<ListTodo className="h-4 w-4" />}
             label="Backlog"
+            active={pathname === "/backlog"}
           />
           <NavItem
             href="/projects"
             icon={<FolderKanban className="h-4 w-4" />}
             label="Projects"
+            active={pathname === "/projects"}
           />
           <NavItem
             href="/team"
             icon={<Users className="h-4 w-4" />}
             label="Team"
+            active={pathname === "/team"}
           />
           <NavItem
             href="/profile"
             icon={<Settings className="h-4 w-4" />}
             label="Profile"
+            active={pathname === "/profile"}
           />
         </nav>
       </div>

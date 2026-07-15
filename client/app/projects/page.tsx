@@ -11,7 +11,6 @@ import {
 import { useAuth } from "@/lib/AuthContext";
 import axiosInstance from "@/lib/Axiosinstance";
 import { Calendar, Plus, Users } from "lucide-react";
-import { projectShutdown } from "next/dist/build/swc/generated-native";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
@@ -36,25 +35,37 @@ const page = () => {
       setloading(false);
     }
   };
-  const fetchissuesforproject = async (projectid: string) => {
-    try {
-      const res = await axiosInstance.get(`api/issues/project/${projectid}`);
-      setissuesbyproject((prev: any) => ({
-        ...prev,
-        [projectid]: res.data,
-      }));
-    } catch (error) {
-      console.error(error);
-    }
+  // Fetches issue counts for every project in parallel (one request per
+  // project, fired together via Promise.all) instead of firing them
+  // untracked inside a forEach with no shared loading/error state.
+  const fetchissuesforallprojects = async (projects: any[]) => {
+    if (projects.length === 0) return;
+
+    const results = await Promise.all(
+      projects.map((p: any) =>
+        axiosInstance
+          .get(`api/issues/project/${p.id}`)
+          .then((res) => ({ id: p.id, issues: res.data }))
+          .catch((error) => {
+            console.error(`Failed to load issues for project ${p.id}`, error);
+            return { id: p.id, issues: [] };
+          }),
+      ),
+    );
+
+    const map: Record<string, any> = {};
+    results.forEach(({ id, issues }) => {
+      map[id] = issues;
+    });
+    setissuesbyproject(map);
   };
+
   useEffect(() => {
     if (!user) return;
     fetchproject();
   }, [user]);
   useEffect(() => {
-    project.forEach((project: any) => {
-      fetchissuesforproject(project.id);
-    });
+    fetchissuesforallprojects(project);
   }, [project]);
   if (loading) {
     return (

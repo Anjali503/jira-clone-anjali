@@ -159,11 +159,22 @@ const page = () => {
 
       <div className="flex-1 overflow-y-auto space-y-6 pr-2">
         {/* Sprint Section */}
-        {/* {activeSprint && (
-          <section>
+        <section>
+          {activeSprint ? (
             <SprintSection sprint={activeSprint} issues={sprintIssues} />
-          </section>
-        )} */}
+          ) : (
+            <div className="border rounded-md p-4 flex items-center justify-between bg-[#F4F5F7]">
+              <div>
+                <p className="text-sm font-semibold text-[#172B4D]">
+                  No active sprint
+                </p>
+                <p className="text-xs text-[#5E6C84]">
+                  Start a sprint to move issues out of the backlog and onto the board.
+                </p>
+              </div>
+            </div>
+          )}
+        </section>
 
         {/* Backlog Section */}
         <section>

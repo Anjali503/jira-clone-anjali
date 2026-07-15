@@ -59,52 +59,73 @@ const IssueModel = ({ issue, isOpen, onClose, allIssues = [], onIssueCreated }: 
   const loadIssueDetails = async (issueToLoad: any) => {
     if (!issueToLoad?.id) return;
 
-    try {
-      setLoading(true);
-      setWorkLogLoading(true);
-      setSprint(null);
-      setSprintError("");
-      setWorkLogError("");
+    const issueId = issueToLoad.id;
 
-      setLocalIssue(issueToLoad);
+    setLoading(true);
+    setWorkLogLoading(true);
+    setSprint(null);
+    setSprintError("");
+    setWorkLogError("");
+    setLocalIssue(issueToLoad);
 
-      const issueRes = await axiosInstance.get(`/api/issues/${issueToLoad.id}`);
-      const latestIssue = issueRes.data;
-      setLocalIssue(latestIssue);
+    // All independent reads fire together instead of waiting on each
+    // other one-by-one. The sprint fetch uses the sprintId already
+    // present on the issue passed in (it comes from the board/backlog
+    // list, which already has it) so it doesn't need to wait for the
+    // issue-detail call to resolve first.
+    if (issueToLoad.sprintId) {
+      setSprintLoading(true);
+    }
 
-      const workLogRes = await axiosInstance.get(
-        `/api/worklogs?issueId=${latestIssue.id}`,
-      );
+    const [issueResult, workLogResult, subtasksResult, sprintResult] =
+      await Promise.allSettled([
+        axiosInstance.get(`/api/issues/${issueId}`),
+        axiosInstance.get(`/api/worklogs?issueId=${issueId}`),
+        axiosInstance.get(`/api/issues/parent/${issueId}`),
+        issueToLoad.sprintId
+          ? axiosInstance.get(`/api/sprints/${issueToLoad.sprintId}`)
+          : Promise.resolve(null),
+      ]);
+
+    // Attachments manage their own loading/error state and are also
+    // reused after upload, so they're kicked off in parallel too rather
+    // than folded into the Promise.allSettled above.
+    loadAttachments(issueId);
+
+    if (issueResult.status === "fulfilled") {
+      setLocalIssue(issueResult.value.data);
+    } else {
+      console.error("Failed to load issue details", issueResult.reason);
+    }
+
+    if (workLogResult.status === "fulfilled") {
       setWorkLogs(
-        (workLogRes.data || []).map((log: any) => ({
+        (workLogResult.value.data || []).map((log: any) => ({
           ...log,
           id: normalizeId(log.id),
         })),
       );
-
-      const subtasksRes = await axiosInstance.get(
-        `/api/issues/parent/${latestIssue.id}`,
-      );
-      setSubtasks(subtasksRes.data || []);
-
-      await loadAttachments(latestIssue.id);
-
-      if (latestIssue.sprintId) {
-        setSprintLoading(true);
-        const sprintRes = await axiosInstance.get(
-          `/api/sprints/${latestIssue.sprintId}`,
-        );
-        setSprint(sprintRes.data);
-      }
-    } catch (err) {
-      console.error("Failed to load issue details", err);
+    } else {
+      console.error("Failed to load work logs", workLogResult.reason);
       setWorkLogError("Failed to load work logs.");
-      setSprintError("Failed to load sprint data.");
-    } finally {
-      setLoading(false);
-      setWorkLogLoading(false);
-      setSprintLoading(false);
     }
+
+    if (subtasksResult.status === "fulfilled") {
+      setSubtasks(subtasksResult.value.data || []);
+    } else {
+      console.error("Failed to load subtasks", subtasksResult.reason);
+    }
+
+    if (sprintResult.status === "fulfilled" && sprintResult.value) {
+      setSprint(sprintResult.value.data);
+    } else if (sprintResult.status === "rejected") {
+      console.error("Failed to load sprint data", sprintResult.reason);
+      setSprintError("Failed to load sprint data.");
+    }
+
+    setLoading(false);
+    setWorkLogLoading(false);
+    setSprintLoading(false);
   };
 
   useEffect(() => {
@@ -142,10 +163,14 @@ const IssueModel = ({ issue, isOpen, onClose, allIssues = [], onIssueCreated }: 
     try {
       setLoading(true);
 
-      const updatedComments = [
-        ...(localIssue.comments || []),
-        commentText, // ONLY STRING
-      ];
+      const newComment = {
+        text: commentText,
+        authorId: user.id,
+        authorName: user.name,
+        createdAt: new Date().toISOString(),
+      };
+
+      const updatedComments = [...(localIssue.comments || []), newComment];
 
       await axiosInstance.put(`/api/issues/${localIssue.id}`, {
         title: localIssue.title,
@@ -174,6 +199,22 @@ const IssueModel = ({ issue, isOpen, onClose, allIssues = [], onIssueCreated }: 
     } finally {
       setLoading(false);
     }
+  };
+
+  // Renders both the new comment shape ({ text, authorName, createdAt })
+  // and any legacy plain-string comments that may already exist in the
+  // database, so old issues don't break or silently drop comments.
+  const formatRelativeTime = (iso: string) => {
+    const date = new Date(iso);
+    const diffMs = Date.now() - date.getTime();
+    const diffMins = Math.round(diffMs / 60000);
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.round(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.round(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
   };
 
   const createSubtask = async (e: React.FormEvent) => {
@@ -433,18 +474,40 @@ const IssueModel = ({ issue, isOpen, onClose, allIssues = [], onIssueCreated }: 
               <div className="space-y-4 mb-6">
                 {localIssue.comments?.length > 0 ? (
                   <div className="space-y-3">
-                    {localIssue.comments.map(
-                      (comment: string, index: number) => (
+                    {localIssue.comments.map((comment: any, index: number) => {
+                      // Legacy comments were stored as plain strings with
+                      // no author or timestamp. Render those gracefully
+                      // instead of crashing on older issues.
+                      const isLegacyString = typeof comment === "string";
+                      const text = isLegacyString ? comment : comment.text;
+                      const authorName = isLegacyString
+                        ? null
+                        : comment.authorName;
+                      const createdAt = isLegacyString
+                        ? null
+                        : comment.createdAt;
+
+                      return (
                         <div
                           key={index}
                           className="rounded-md border border-[#DFE1E6] bg-[#F4F5F7] p-3"
                         >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-semibold text-[#172B4D]">
+                              {authorName || "Unknown"}
+                            </span>
+                            {createdAt && (
+                              <span className="text-[11px] text-[#6B778C]">
+                                {formatRelativeTime(createdAt)}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-sm text-[#172B4D] whitespace-pre-wrap">
-                            {comment}
+                            {text}
                           </p>
                         </div>
-                      ),
-                    )}
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-sm text-[#6B778C] italic">

@@ -1,15 +1,14 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Badge } from "./ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
-import axiosInstance from "@/lib/Axiosinstance";
-
 
 interface KanbanCardProps {
   issue: any;
+  assignee?: any;
   isOverlay?: boolean;
   onClick?: () => void;
 }
@@ -26,9 +25,7 @@ const issueTypeColors: Record<string, string> = {
   STORY: "bg-purple-500",
 };
 
-const KanbanCard = ({ issue, isOverlay = false, onClick }: KanbanCardProps) => {
-  const [assignee, setAssignee] = useState<any>(null);
-
+const KanbanCard = ({ issue, assignee, isOverlay = false, onClick }: KanbanCardProps) => {
   // ❗ useSortable ONLY for real cards, not overlay
   const sortable = !isOverlay
     ? useSortable({ id: issue.id })
@@ -42,25 +39,9 @@ const KanbanCard = ({ issue, isOverlay = false, onClick }: KanbanCardProps) => {
       }
     : undefined;
 
-  /* =====================
-     Fetch assignee by ID
-  ===================== */
-  useEffect(() => {
-    if (!issue?.assigneeId || isOverlay) return;
-
-    const fetchAssignee = async () => {
-      try {
-        const res = await axiosInstance.get(
-          `/api/users/${issue.assigneeId}`,
-        );
-        setAssignee(res.data);
-      } catch (err) {
-        console.error("Failed to load assignee", err);
-      }
-    };
-
-    fetchAssignee();
-  }, [issue?.assigneeId, isOverlay]);
+  // Assignee now comes pre-resolved from KanbanBoard's single batched
+  // fetch (one request per unique assignee for the whole board) instead
+  // of each card fetching its own assignee individually.
 
   return (
     <div

@@ -7,7 +7,7 @@ import {
 import React from "react";
 import KanbanCard from "./KanbanCard";
 
-const KanbanColumn = ({ column, issues, onIssueClick }: any) => {
+const KanbanColumn = ({ column, issues, assigneeMap, onIssueClick }: any) => {
   const { setNodeRef } = useDroppable({
     id: column.id,
   });
@@ -25,6 +25,7 @@ const KanbanColumn = ({ column, issues, onIssueClick }: any) => {
             <KanbanCard
               key={issue.id}
               issue={issue}
+              assignee={issue.assigneeId ? assigneeMap?.[issue.assigneeId] : null}
               onClick={() => onIssueClick(issue)}
             />
           ))}

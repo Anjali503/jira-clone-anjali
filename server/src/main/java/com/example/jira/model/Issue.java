@@ -33,7 +33,7 @@ public class Issue {
     private String parentId;                                     // null for top-level issues; set for subtasks
     private List<String> dependencies = new ArrayList<>();       // IDs of issues that block this issue
 
-    private List<String> comments;
+    private List<Comment> comments;
 
     private Instant dueDate;
 
@@ -97,8 +97,8 @@ public class Issue {
     public List<String> getDependencies() { return dependencies; }
     public void setDependencies(List<String> dependencies) { this.dependencies = dependencies; }
 
-    public List<String> getComments() { return comments; }
-    public void setComments(List<String> comments) { this.comments = comments; }
+    public List<Comment> getComments() { return comments; }
+    public void setComments(List<Comment> comments) { this.comments = comments; }
 
     public Instant getDueDate() { return dueDate; }
     public void setDueDate(Instant dueDate) { this.dueDate = dueDate; }

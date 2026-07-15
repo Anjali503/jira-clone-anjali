@@ -33,6 +33,7 @@ const KanbanBoard = () => {
   const searchQuery = searchParams.get("search")?.toLowerCase() || "";
 
   const [issues, setIssues] = useState<any[]>([]);
+  const [assigneeMap, setAssigneeMap] = useState<Record<string, any>>({});
   const [activeIssue, setActiveIssue] = useState<any | null>(null);
   const [selectedIssue, setSelectedIssue] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
@@ -50,7 +51,9 @@ const KanbanBoard = () => {
   );
 
   /* =====================
-     Fetch issues
+     Fetch issues + assignees
+     (batched: one request per UNIQUE assignee,
+     fired in parallel, instead of one request per card)
   ===================== */
   const fetchIssues = async () => {
     if (!selectedProject?.id) return;
@@ -60,7 +63,38 @@ const KanbanBoard = () => {
       const res = await axiosInstance.get(
         `/api/issues/project/${selectedProject.id}`
       );
-      setIssues(res.data);
+      const fetchedIssues = res.data;
+      setIssues(fetchedIssues);
+
+      const uniqueAssigneeIds: string[] = Array.from(
+        new Set(
+          fetchedIssues
+            .map((i: any) => i.assigneeId)
+            .filter((id: any): id is string => Boolean(id))
+        )
+      );
+
+      if (uniqueAssigneeIds.length > 0) {
+        const results = await Promise.all(
+          uniqueAssigneeIds.map((id) =>
+            axiosInstance
+              .get(`/api/users/${id}`)
+              .then((r) => ({ id, user: r.data }))
+              .catch((err) => {
+                console.error(`Failed to load assignee ${id}`, err);
+                return { id, user: null };
+              })
+          )
+        );
+
+        const map: Record<string, any> = {};
+        results.forEach(({ id, user }) => {
+          if (user) map[id] = user;
+        });
+        setAssigneeMap(map);
+      } else {
+        setAssigneeMap({});
+      }
     } catch (err) {
       console.error("Failed to load issues", err);
     } finally {
@@ -170,6 +204,7 @@ const KanbanBoard = () => {
                 key={column.id}
                 column={column}
                 issues={columnIssues}
+                assigneeMap={assigneeMap}
                 onIssueClick={setSelectedIssue}
               />
             );
